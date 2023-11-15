@@ -25,13 +25,14 @@ SOFTWARE.
 
 import argparse
 import random
+import secrets
 import socket
 import struct
 
 version = '0.1.0'
 
 
-class ICMPSocket4:
+class ICMPPing4:
     destinationAddress = '127.0.0.1'
     icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
     icmpPacket = None
@@ -43,19 +44,22 @@ class ICMPSocket4:
     def connect(self, icmpPacket):
         self.icmpSocket.sendto(icmpPacket, (self.destinationAddress, 0))  # ICMP does not care about port, so 0 is OK.
 
-    def createICMPPacket(self, ID):
+    def createICMPPacket(self, ID, dataSize):
         """
-            Create ICMP Header as a "struct".
+            Create ICMP Header as a "struct", fill with payload data.
             Format:B as unsigned byte (8bit) for icmp_echo_request and icmp_echo_code;
                    H as unsigned short int (16bit) for icmp_checksum, icmp_id and icmp_sequence;
             [B:icmp_echo_request|B:icmp_echo_code|H:icmp_checksum|H:icmp_id|H:icmp_sequence][payload]
+            :param ID: The ID of this ICMP packet.
+            :param dataSize: The size of the payload data.
+            :return: The created ICMP packet.
         """
         icmp_echo_request = 8
         icmp_echo_code = 0
         icmp_checksum = 0
         icmp_id = ID
         icmp_sequence = 1
-        payload = b'qwertyuiopasdfghjklzxcvbnm'
+        payload = secrets.token_bytes(dataSize)
 
         icmp_header = struct.pack('BBHHH', icmp_echo_request, icmp_echo_code, icmp_checksum, icmp_id, icmp_sequence)
         icmp_checksum = calculateChecksum(icmp_header + payload)
@@ -80,13 +84,49 @@ def calculateChecksum(data):
     return ~checksum & 0xFFFF
 
 
-# def receiveOnePing(icmpSocket, destinationAddress, ID, timeout):
+def receiveOnePing(icmpSocket, destinationAddress, ID, timeout):
 
-# def sendOnePing(icmpSocket, destinationAddress, ID):
+def sendOnePing(icmpSocket, destinationAddress, ID):
 
-# def doOnePing(destinationAddress, timeout):
+def doOnePing(destinationAddress, timeout):
 
-# def ping(host, timeout):
+def ping(host, timeout, dataSize, pingTime):
+    """
+    Full logic of pinging a target host.
+    :param host: Target host. IP or hostname accepted.
+    :param timeout: Timeout waiting for response (in ms).
+    :param dataSize: Size of send data payload.
+    :param pingTime: How many times to ping. -1 for non-stop.
+    :return:
+    """
+    try:
+        destinationAddress = socket.gethostbyname(host)
+    except socket.gaierror:
+        print("Error: Invalid hostname or IP address.")
+        return
+
+    if destinationAddress == host:
+        print(f"Pinging {destinationAddress} with {dataSize} bytes of data:")
+    else:
+        print(f"Pinging {destinationAddress} [{host}] with {dataSize} bytes of data:")
+
+    if pingTime == -1:
+        while True:
+            # TODO: fill the arguments.
+            returnDataSize, delay, returnTTL = doOnePing()
+            if delay is not None:
+                print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}, TTL={returnTTL}")
+            else:
+                print("Request timed out.")
+    else:
+        for time in range(pingTime):
+            # TODO: fill the arguments.
+            returnDataSize, delay, returnTTL = doOnePing()
+            if delay is not None:
+                print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}, TTL={returnTTL}")
+            else:
+                print("Request timed out.")
+
 
 
 if __name__ == '__main__':
@@ -97,15 +137,13 @@ if __name__ == '__main__':
     commandParser.add_argument('-t', action='store_true', default=False,
                                help="ping the target host until stopped manually(Ctrl+C).")
     commandParser.add_argument('-c', metavar='count', default=4, type=int, help="stop after <count> times.")
+    commandParser.add_argument('-l', metavar = 'size', default=32, type=int, help="send buffer size.")
+    commandParser.add_argument('-w', metavar='timeout', default=2000, type=int, help="timeout waiting for response(ms).")
     commandParser.add_argument('target_host', type=str, help="target host to ping. (DNS name or IP address)")
     commandOptions = commandParser.parse_args()
 
     # Do ping
-    if commandOptions.t:
-        while True:
-            print("TODO: set ping command here")
-            # ping(commandOptions.target_host)
+    if not commandOptions.t:
+        ping(commandOptions.target_host, commandOptions.w, commandOptions.l, commandOptions.c)
     else:
-        for pingTime in range(commandOptions.c):
-            print("TODO: set ping command here")
-            # ping(commandOptions.target_host)
+        ping(commandOptions.target_host, commandOptions.w, commandOptions.l, -1)
