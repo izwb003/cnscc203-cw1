@@ -91,6 +91,11 @@ class ICMPPing4:
             if timeLeft <= 0:
                 return None, None, None
 
+    def doOnePing(self):
+        self.sendOnePing()
+        returnedDataSize, returnedDelay, returnedTTL = self.receiveOnePing()
+        return returnedDataSize, returnedDelay, returnedTTL
+
     def createICMPPacket(self):
         """
             Create ICMP Header as a "struct", fill with payload data.
@@ -130,21 +135,6 @@ def calculateChecksum(data):
     return ~checksum & 0xFFFF
 
 
-def doOnePing4(destinationAddress, timeout, dataSize):
-    """
-    Full logic of complete one ping request for IPv4.
-    :param destinationAddress: Target host. IP only.
-    :param timeout: Timeout waiting for response (in ms).
-    :param dataSize: The size of the payload data.
-    :return:
-    """
-    ID = random.randint(0, 65535)
-    icmpPing = ICMPPing4(destinationAddress, ID, dataSize, timeout)
-    icmpPing.sendOnePing()
-    returnedDataSize, returnedDelay, returnedTTL = icmpPing.receiveOnePing()
-    return returnedDataSize, returnedDelay, returnedTTL
-
-
 def ping(host, timeout, dataSize, pingTime):
     """
     Full logic of pinging a target host.
@@ -167,14 +157,18 @@ def ping(host, timeout, dataSize, pingTime):
 
     if pingTime == -1:
         while True:
-            returnDataSize, delay, returnTTL = doOnePing4(destinationAddress, timeout, dataSize)
+            ID = random.randint(0, 65535)
+            icmpPing = ICMPPing4(destinationAddress, ID, dataSize, timeout)
+            returnDataSize, delay, returnTTL = icmpPing.doOnePing()
             if delay is not None:
                 print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}ms, TTL={returnTTL}")
             else:
                 print("Request timed out.")
     else:
         for loopTime in range(pingTime):
-            returnDataSize, delay, returnTTL = doOnePing4(destinationAddress, timeout, dataSize)
+            ID = random.randint(0, 65535)
+            icmpPing = ICMPPing4(destinationAddress, ID, dataSize, timeout)
+            returnDataSize, delay, returnTTL = icmpPing.doOnePing()
             if delay is not None:
                 print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}ms, TTL={returnTTL}")
             else:
