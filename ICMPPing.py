@@ -50,7 +50,7 @@ class ICMPPing4:
         self.icmpDataSize = dataSize
         self.icmpID = ID
         self.icmpPacket = self.createICMPPacket()
-        self.timeout = timeout
+        self.timeout = timeout/1000
 
     def sendOnePing(self):
         """
@@ -86,7 +86,7 @@ class ICMPPing4:
             timeLeft -= elapsedTime
 
             if packetID == self.icmpID:
-                return dataSize, receivedTime - selectStartTime, TTL
+                return dataSize, (receivedTime - selectStartTime)*1000, TTL
 
             if timeLeft <= 0:
                 return None, None, None
@@ -168,23 +168,17 @@ def ping(host, timeout, dataSize, pingTime):
     if pingTime == -1:
         while True:
             returnDataSize, delay, returnTTL = doOnePing4(destinationAddress, timeout, dataSize)
-            if returnDataSize is not None and returnTTL is not None:
-                if delay is not None:
-                    print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}, TTL={returnTTL}")
-                else:
-                    print("Request timed out.")
+            if delay is not None:
+                print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}ms, TTL={returnTTL}")
             else:
-                print("Error: Failed to get response data.")
+                print("Request timed out.")
     else:
         for loopTime in range(pingTime):
             returnDataSize, delay, returnTTL = doOnePing4(destinationAddress, timeout, dataSize)
-            if returnDataSize is not None and returnTTL is not None:
-                if delay is not None:
-                    print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}, TTL={returnTTL}")
-                else:
-                    print("Request timed out.")
+            if delay is not None:
+                print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}ms, TTL={returnTTL}")
             else:
-                print("Error: Failed to get response data.")
+                print("Request timed out.")
 
 
 if __name__ == '__main__':
