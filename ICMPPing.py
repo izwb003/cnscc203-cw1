@@ -26,40 +26,86 @@ SOFTWARE.
 import argparse
 import random
 import secrets
+import select
 import socket
 import struct
+import time
 
 version = '0.1.0'
 
 
 class ICMPPing4:
+    """
+    Define all the essential content for making a complete IPv4 ICMPPing connection.
+    """
     destinationAddress = '127.0.0.1'
+    timeout = 2000
+    icmpDataSize = 32
     icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
+    icmpID = 0
     icmpPacket = None
 
-    def __init__(self, targetHost, ID):
+    def __init__(self, targetHost, ID, dataSize, timeout):
         self.destinationAddress = targetHost
-        self.icmpPacket = self.createICMPPacket(ID)
+        self.icmpDataSize = dataSize
+        self.icmpID = ID
+        self.icmpPacket = self.createICMPPacket()
+        self.timeout = timeout
 
-    def connect(self, icmpPacket):
-        self.icmpSocket.sendto(icmpPacket, (self.destinationAddress, 0))  # ICMP does not care about port, so 0 is OK.
+    def sendOnePing(self):
+        """
+        Send a Ping request to the target host.
+        :return: None.
+        """
 
-    def createICMPPacket(self, ID, dataSize):
+        # ICMP does not care about port, so 0 is OK.
+        self.icmpSocket.sendto(self.icmpPacket, (self.destinationAddress, 0))
+
+    def receiveOnePing(self):
+        timeLeft = self.timeout
+
+        while True:
+            selectStartTime = time.time()
+            selectMonitor = select.select([self.icmpSocket], [], [], timeLeft)
+            elapsedTime = (time.time() - selectStartTime)
+
+            if selectMonitor[0] == []:
+                return None, None, None
+
+            receivedTime = time.time()
+            receivedPacket, address = self.icmpSocket.recvfrom(1024)
+
+            receivedICMPHeader = receivedPacket[20:28]
+            receivedIPHeader = receivedPacket[:20]
+
+            TTL = struct.unpack("!B", receivedIPHeader[8:9])[0]
+
+            icmpType, code, checksum, packetID, sequence = struct.unpack("BBHHH", receivedICMPHeader)
+            dataSize = len(receivedPacket) - 28
+
+            timeLeft -= elapsedTime
+
+            if packetID == self.icmpID:
+                return dataSize, receivedTime - selectStartTime, TTL
+
+            if timeLeft <= 0:
+                return None, None, None
+
+    def createICMPPacket(self):
         """
             Create ICMP Header as a "struct", fill with payload data.
             Format:B as unsigned byte (8bit) for icmp_echo_request and icmp_echo_code;
                    H as unsigned short int (16bit) for icmp_checksum, icmp_id and icmp_sequence;
             [B:icmp_echo_request|B:icmp_echo_code|H:icmp_checksum|H:icmp_id|H:icmp_sequence][payload]
-            :param ID: The ID of this ICMP packet.
-            :param dataSize: The size of the payload data.
             :return: The created ICMP packet.
         """
         icmp_echo_request = 8
         icmp_echo_code = 0
         icmp_checksum = 0
-        icmp_id = ID
+        icmp_id = self.icmpID
         icmp_sequence = 1
-        payload = secrets.token_bytes(dataSize)
+
+        payload = secrets.token_bytes(self.icmpDataSize)    # Build a random data which size as self.icmpDataSize.
 
         icmp_header = struct.pack('BBHHH', icmp_echo_request, icmp_echo_code, icmp_checksum, icmp_id, icmp_sequence)
         icmp_checksum = calculateChecksum(icmp_header + payload)
@@ -84,11 +130,20 @@ def calculateChecksum(data):
     return ~checksum & 0xFFFF
 
 
-def receiveOnePing(icmpSocket, destinationAddress, ID, timeout):
+def doOnePing4(destinationAddress, timeout, dataSize):
+    """
+    Full logic of complete one ping request for IPv4.
+    :param destinationAddress: Target host. IP only.
+    :param timeout: Timeout waiting for response (in ms).
+    :param dataSize: The size of the payload data.
+    :return:
+    """
+    ID = random.randint(0, 65535)
+    icmpPing = ICMPPing4(destinationAddress, ID, dataSize, timeout)
+    icmpPing.sendOnePing()
+    returnedDataSize, returnedDelay, returnedTTL = icmpPing.receiveOnePing()
+    return returnedDataSize, returnedDelay, returnedTTL
 
-def sendOnePing(icmpSocket, destinationAddress, ID):
-
-def doOnePing(destinationAddress, timeout):
 
 def ping(host, timeout, dataSize, pingTime):
     """
@@ -113,20 +168,22 @@ def ping(host, timeout, dataSize, pingTime):
     if pingTime == -1:
         while True:
             # TODO: fill the arguments.
-            returnDataSize, delay, returnTTL = doOnePing()
+            DataSize, delay, TTL = doOnePing4()
             if delay is not None:
-                print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}, TTL={returnTTL}")
+                print(f"Reply from {destinationAddress}: Data size={DataSize}, Time={delay}, TTL={TTL}")
             else:
                 print("Request timed out.")
     else:
         for time in range(pingTime):
             # TODO: fill the arguments.
-            returnDataSize, delay, returnTTL = doOnePing()
-            if delay is not None:
-                print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}, TTL={returnTTL}")
+            returnDataSize, delay, returnTTL = doOnePing4()
+            if returnDataSize is not None and returnTTL is not None:
+                if delay is not None:
+                    print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}, TTL={returnTTL}")
+                else:
+                    print("Request timed out.")
             else:
-                print("Request timed out.")
-
+                print("Error: Failed to get response data.")
 
 
 if __name__ == '__main__':
@@ -137,7 +194,7 @@ if __name__ == '__main__':
     commandParser.add_argument('-t', action='store_true', default=False,
                                help="ping the target host until stopped manually(Ctrl+C).")
     commandParser.add_argument('-c', metavar='count', default=4, type=int, help="stop after <count> times.")
-    commandParser.add_argument('-l', metavar = 'size', default=32, type=int, help="send buffer size.")
+    commandParser.add_argument('-l', metavar='size', default=32, type=int, help="send buffer size.")
     commandParser.add_argument('-w', metavar='timeout', default=2000, type=int, help="timeout waiting for response(ms).")
     commandParser.add_argument('target_host', type=str, help="target host to ping. (DNS name or IP address)")
     commandOptions = commandParser.parse_args()
