@@ -69,7 +69,7 @@ class ICMPPing4:
             selectMonitor = select.select([self.icmpSocket], [], [], timeLeft)
             elapsedTime = (time.time() - selectStartTime)
 
-            if selectMonitor[0] == []:
+            if not selectMonitor[0]:
                 return None, None, None
 
             receivedTime = time.time()
@@ -167,16 +167,17 @@ def ping(host, timeout, dataSize, pingTime):
 
     if pingTime == -1:
         while True:
-            # TODO: fill the arguments.
-            DataSize, delay, TTL = doOnePing4()
-            if delay is not None:
-                print(f"Reply from {destinationAddress}: Data size={DataSize}, Time={delay}, TTL={TTL}")
+            returnDataSize, delay, returnTTL = doOnePing4(destinationAddress, timeout, dataSize)
+            if returnDataSize is not None and returnTTL is not None:
+                if delay is not None:
+                    print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}, TTL={returnTTL}")
+                else:
+                    print("Request timed out.")
             else:
-                print("Request timed out.")
+                print("Error: Failed to get response data.")
     else:
-        for time in range(pingTime):
-            # TODO: fill the arguments.
-            returnDataSize, delay, returnTTL = doOnePing4()
+        for loopTime in range(pingTime):
+            returnDataSize, delay, returnTTL = doOnePing4(destinationAddress, timeout, dataSize)
             if returnDataSize is not None and returnTTL is not None:
                 if delay is not None:
                     print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}, TTL={returnTTL}")
