@@ -50,7 +50,7 @@ class ICMPPing4:
         self.icmpDataSize = dataSize
         self.icmpID = ID
         self.icmpPacket = self.createICMPPacket()
-        self.timeout = timeout/1000
+        self.timeout = timeout/1000  # From ms into s.
 
     def sendOnePing(self):
         """
@@ -135,6 +135,16 @@ def calculateChecksum(data):
     return ~checksum & 0xFFFF
 
 
+def pingv4(destinationAddress, dataSize, timeout):
+    ID = random.randint(0, 65535)
+    icmpPing = ICMPPing4(destinationAddress, ID, dataSize, timeout)
+    returnDataSize, delay, returnTTL = icmpPing.doOnePing()
+    if delay is not None:
+        print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}ms, TTL={returnTTL}")
+    else:
+        print("Request timed out.")
+
+
 def ping(host, timeout, dataSize, pingTime):
     """
     Full logic of pinging a target host.
@@ -157,22 +167,10 @@ def ping(host, timeout, dataSize, pingTime):
 
     if pingTime == -1:
         while True:
-            ID = random.randint(0, 65535)
-            icmpPing = ICMPPing4(destinationAddress, ID, dataSize, timeout)
-            returnDataSize, delay, returnTTL = icmpPing.doOnePing()
-            if delay is not None:
-                print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}ms, TTL={returnTTL}")
-            else:
-                print("Request timed out.")
+            pingv4(destinationAddress, dataSize, timeout)
     else:
         for loopTime in range(pingTime):
-            ID = random.randint(0, 65535)
-            icmpPing = ICMPPing4(destinationAddress, ID, dataSize, timeout)
-            returnDataSize, delay, returnTTL = icmpPing.doOnePing()
-            if delay is not None:
-                print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}ms, TTL={returnTTL}")
-            else:
-                print("Request timed out.")
+            pingv4(destinationAddress, dataSize, timeout)
 
 
 if __name__ == '__main__':
@@ -184,7 +182,8 @@ if __name__ == '__main__':
                                help="ping the target host until stopped manually(Ctrl+C).")
     commandParser.add_argument('-c', metavar='count', default=4, type=int, help="stop after <count> times.")
     commandParser.add_argument('-l', metavar='size', default=32, type=int, help="send buffer size.")
-    commandParser.add_argument('-w', metavar='timeout', default=2000, type=int, help="timeout waiting for response(ms).")
+    commandParser.add_argument('-w', metavar='timeout', default=2000, type=int,
+                               help="timeout waiting for response(ms).")
     commandParser.add_argument('target_host', type=str, help="target host to ping. (DNS name or IP address)")
     commandOptions = commandParser.parse_args()
 
