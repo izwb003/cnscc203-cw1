@@ -38,7 +38,7 @@ class ICMPPing4:
     """
     Define all the essential content for making a complete IPv4 ICMPPing connection.
     """
-    destinationAddress = '127.0.0.1'
+    destinationAddress = ''
     timeout = 2000
     icmpDataSize = 32
     icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
@@ -62,22 +62,32 @@ class ICMPPing4:
         self.icmpSocket.sendto(self.icmpPacket, (self.destinationAddress, 0))
 
     def receiveOnePing(self):
+        """
+        Receive a Ping response from the target host.
+        :return: dataSize, delayTime, TTL
+        """
         timeLeft = self.timeout
 
         while True:
             selectStartTime = time.time()
+            # Use select to monitor the socket's status.
+            # select.select(readable event list, writeable event list, error event list, timeout)
             selectMonitor = select.select([self.icmpSocket], [], [], timeLeft)
             elapsedTime = (time.time() - selectStartTime)
 
+            # If the socket is unreadable, then we are timed out.
             if not selectMonitor[0]:
                 return None, None, None
 
             receivedTime = time.time()
             receivedPacket, address = self.icmpSocket.recvfrom(1024)
 
+            # Get the ICMP and IP header.
             receivedICMPHeader = receivedPacket[20:28]
             receivedIPHeader = receivedPacket[:20]
 
+            # Extract the IP header to get TTL.
+            # Format: !: Use big-endian; B: Unsigned byte (8 bits)
             TTL = struct.unpack("!B", receivedIPHeader[8:9])[0]
 
             icmpType, code, checksum, packetID, sequence = struct.unpack("BBHHH", receivedICMPHeader)
@@ -143,6 +153,7 @@ def pingv4(destinationAddress, dataSize, timeout):
         print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}ms, TTL={returnTTL}")
     else:
         print("Request timed out.")
+    time.sleep(1)
 
 
 def ping(host, timeout, dataSize, pingTime):
