@@ -146,14 +146,36 @@ def calculateChecksum(data):
 
 
 def pingv4(destinationAddress, dataSize, timeout):
+    time.sleep(1)
     ID = random.randint(0, 65535)
     icmpPing = ICMPPing4(destinationAddress, ID, dataSize, timeout)
     returnDataSize, delay, returnTTL = icmpPing.doOnePing()
     if delay is not None:
         print(f"Reply from {destinationAddress}: Data size={returnDataSize}, Time={delay}ms, TTL={returnTTL}")
+        return delay
     else:
         print("Request timed out.")
-    time.sleep(1)
+        return None
+
+
+def finalStatistics(targetHost, pingSent, pingReceived, minTime, maxTime, totalTime):
+    """
+    Full logic of printing the final result.
+    :param targetHost: Target host. In IP address.
+    :param pingSent: How many Ping packages were sent to the target host.
+    :param pingReceived: How many Ping packages were received from the target host.
+    :param minTime: The minimum delay time.
+    :param maxTime: The maximum delay time.
+    :param totalTime: The total delay time for calculating average time.
+    :return:
+    """
+    pingLost = pingSent - pingReceived
+    pingLostPercentage = (pingLost / pingSent) * 100
+    print(f"{targetHost}'s Ping statistic:")
+    print(f"    Packet: Sent={pingSent}, Received={pingReceived}, Lost={pingLost} ({pingLostPercentage}% Lost)")
+    if pingReceived != 0:
+        print(f"Estimated time for round-trip travel:")
+        print(f"    Min={minTime}ms, Max={maxTime}ms, Avg={totalTime / pingSent}ms")
 
 
 def ping(host, timeout, dataSize, pingTime):
@@ -165,23 +187,45 @@ def ping(host, timeout, dataSize, pingTime):
     :param pingTime: How many times to ping. -1 for non-stop.
     :return:
     """
+    currentPingSent = 0
+    currentPingReceived = 0
+    minDelay = timeout
+    maxDelay = 0
+    totalDelay = 0
+    destinationAddress = ''
     try:
-        destinationAddress = socket.gethostbyname(host)
-    except socket.gaierror:
-        print("Error: Invalid hostname or IP address.")
-        return
+        try:
+            destinationAddress = socket.gethostbyname(host)
+        except socket.gaierror:
+            print("Error: Invalid hostname or IP address.")
+            return
 
-    if destinationAddress == host:
-        print(f"Pinging {destinationAddress} with {dataSize} bytes of data:")
-    else:
-        print(f"Pinging {destinationAddress} [{host}] with {dataSize} bytes of data:")
+        if destinationAddress == host:
+            print(f"Pinging {destinationAddress} with {dataSize} bytes of data:")
+        else:
+            print(f"Pinging {destinationAddress} [{host}] with {dataSize} bytes of data:")
 
-    if pingTime == -1:
-        while True:
-            pingv4(destinationAddress, dataSize, timeout)
-    else:
-        for loopTime in range(pingTime):
-            pingv4(destinationAddress, dataSize, timeout)
+        if pingTime == -1:
+            while True:
+                currentPingSent += 1
+                delay = pingv4(destinationAddress, dataSize, timeout)
+                if delay is not None:
+                    currentPingReceived += 1
+                    minDelay = min(minDelay, delay)
+                    maxDelay = max(maxDelay, delay)
+                    totalDelay += delay
+        else:
+            for loopTime in range(pingTime):
+                currentPingSent += 1
+                delay = pingv4(destinationAddress, dataSize, timeout)
+                if delay is not None:
+                    currentPingReceived += 1
+                    minDelay = min(minDelay, delay)
+                    maxDelay = max(maxDelay, delay)
+                    totalDelay += delay
+            finalStatistics(destinationAddress, currentPingSent, currentPingReceived, minDelay, maxDelay, totalDelay)
+    except KeyboardInterrupt:
+        finalStatistics(destinationAddress, currentPingSent, currentPingReceived, minDelay, maxDelay, totalDelay)
 
 
 if __name__ == '__main__':
