@@ -40,17 +40,19 @@ class ICMPTraceRoute4:
     destinationAddress = ''
     timeout = 3
     ttl = 1
-    icmpSocket = None
+    sendIcmpSocket = None
+    receiveIcmpSocket = None
     icmpPacket = None
 
     def __init__(self, destinationAddress, timeout, ttl):
         self.destinationAddress = destinationAddress
         self.timeout = timeout
         self.ttl = ttl
-        self.icmpSocket = self.createICMPSocket()
-        self.icmpPacket = self.createICMPPacket()
+        self.sendIcmpSocket = self.createSendICMPSocket()
+        self.receiveIcmpSocket = self.createReceiveICMPSocket()
+        self.icmpPacket = self.createSendICMPPacket()
 
-    def createICMPSocket(self):
+    def createSendICMPSocket(self):
         # Create ICMP socket
         icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
         # Set TTL in IP header
@@ -58,7 +60,12 @@ class ICMPTraceRoute4:
 
         return icmpSocket
 
-    def createICMPPacket(self):
+    def createReceiveICMPSocket(self):
+        # Create ICMP socket
+        icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
+        return icmpSocket
+
+    def createSendICMPPacket(self):
         """
             Create ICMP Header as a "struct", fill with payload data.
             Format:B as unsigned byte (8bit) for icmp_echo_request and icmp_echo_code;
@@ -83,17 +90,19 @@ class ICMPTraceRoute4:
 
     def sendICMPRequest(self):
         # Send ICMP request
-        self.icmpSocket.sendto(self.icmpPacket, (self.destinationAddress, 0))
+        self.sendIcmpSocket.sendto(self.icmpPacket, (self.destinationAddress, 0))
 
     def receiveICMPReply(self):
-        self.icmpSocket.settimeout(self.timeout)
+        self.sendIcmpSocket.settimeout(self.timeout)
+        self.receiveIcmpSocket.settimeout(self.timeout)
 
-        try:
-            data, address = self.icmpSocket.recvfrom(1024)
-            icmp_header = struct.unpack("BBHHH", data[20:28])
-            return address[0], icmp_header[0]
-        except socket.timeout:
-            return None, None
+        while True:
+            try:
+                data, address = self.sendIcmpSocket.recvfrom(1024)
+                icmp_header = struct.unpack("BBHHH", data[20:28])
+                return address[0], icmp_header[0]
+            except socket.timeout:
+                return None, None
 
 
 def traceroute(host, max_hops, timeout):
@@ -125,15 +134,21 @@ def traceroute(host, max_hops, timeout):
         elapsedTime = int((endTime - startTime) * 1000)
 
         # Close the socket
-        traceRoute.icmpSocket.close()
-        del traceRoute
+        traceRoute.sendIcmpSocket.close()
+        traceRoute.receiveIcmpSocket.close()
 
+        """
+        If ICMPReply can be get from traceRoute.receiveICMPReply(), then it means that this packet reaches the target host.
+        In that case, it will return its address and provides icmpType 0. Then we know it is finished.
+        However if not, then it didn't reach the destination.
+        In that case, we can get the reply from another separate type 11 ICMP response. We need another socket to receive it.
+        """
         if address:
             print(f"{ttl}\t{address}\t{elapsedTime}ms")
             if icmpType == 0:   # ICMP Type 0 means the message reached the target host, so break.
                 break
         else:
-            print(f"{ttl}\t*\t{elapsedTime}ms")
+            print(f"{ttl}\t*\t*")
 
 
 if __name__ == '__main__':
