@@ -24,6 +24,7 @@ SOFTWARE.
 """
 
 import argparse
+import secrets
 import socket
 import struct
 import time
@@ -32,44 +33,30 @@ from ICMPChecksum import calculateChecksum
 version = '0.1.0'
 
 
-class TraceRoute4:
+class ICMPTraceRoute4:
     """
-    Define all the essential content for making a complete IPv4 Traceroute.
+    Define all the essential content for making a complete ICMP IPv4 Traceroute.
     """
     destinationAddress = ''
     timeout = 3
-    icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
-    icmpID = 1
+    ttl = 1
+    icmpSocket = None
     icmpPacket = None
 
-    def __init__(self, targetHost, timeout):
-        self.destinationAddress = targetHost
+    def __init__(self, destinationAddress, timeout, ttl):
+        self.destinationAddress = destinationAddress
         self.timeout = timeout
+        self.ttl = ttl
+        self.icmpSocket = self.createICMPSocket()
         self.icmpPacket = self.createICMPPacket()
 
-    def sendICMPRequest(self, ttl):
-        # Set TTL to IP header
-        self.icmpSocket.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, ttl)
+    def createICMPSocket(self):
+        # Create ICMP socket
+        icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
+        # Set TTL in IP header
+        icmpSocket.setsockopt(socket.getprotobyname("ip"), socket.IP_TTL, self.ttl)
 
-        # Send ICMP packet
-        # ICMP does not care about port, so 0 is OK.
-        self.icmpSocket.sendto(self.icmpPacket, (self.destinationAddress, 0))
-
-    def receiveICMPReply(self):
-        # Set ICMP timeout
-        self.icmpSocket.settimeout(self.timeout)
-
-        try:
-            # Try to receive ICMP reply
-            data, address = self.icmpSocket.recvfrom(1024)  # 1024 as the buffer size.
-            # Unpack the reply data
-            # Byte 20 to 27 is where the ICMP header locates in a packet.
-            icmp_header = struct.unpack("BBHHH", data[20:28])
-            # address[0] is the sender's IP address, icmp_header[0] is the message type.
-            return address[0], icmp_header[0]
-        except socket.timeout:
-            # If timeout return None
-            return None, None
+        return icmpSocket
 
     def createICMPPacket(self):
         """
@@ -82,15 +69,31 @@ class TraceRoute4:
         icmp_echo_request = 8
         icmp_echo_code = 0
         icmp_checksum = 0
-        icmp_id = self.icmpID
+        icmp_id = 1
         icmp_sequence = 1
 
-        icmp_header = struct.pack("BBHHH", icmp_echo_request, icmp_echo_code, icmp_checksum, icmp_id, icmp_sequence)
-        icmp_checksum = calculateChecksum(icmp_header)
-        # Add 4 bytes to fit the size (64 bytes) of a ICMP packet. Works as payload.
-        icmp_packet = struct.pack("BBHHH", icmp_echo_request, icmp_echo_code, icmp_checksum, icmp_id, icmp_sequence) + b'\x00\x00\x00\x00'
+        payload = secrets.token_bytes(64)    # Build a random data which size as self.icmpDataSize.
 
-        return icmp_packet
+        icmp_header = struct.pack('BBHHH', icmp_echo_request, icmp_echo_code, icmp_checksum, icmp_id, icmp_sequence)
+        icmp_checksum = calculateChecksum(icmp_header + payload)
+        icmp_header = struct.pack('BBHHH', icmp_echo_request, icmp_echo_code, socket.htons(icmp_checksum), icmp_id,
+                                  icmp_sequence)
+
+        return icmp_header + payload
+
+    def sendICMPRequest(self):
+        # Send ICMP request
+        self.icmpSocket.sendto(self.icmpPacket, (self.destinationAddress, 0))
+
+    def receiveICMPReply(self):
+        self.icmpSocket.settimeout(self.timeout)
+
+        try:
+            data, address = self.icmpSocket.recvfrom(1024)
+            icmp_header = struct.unpack("BBHHH", data[20:28])
+            return address[0], icmp_header[0]
+        except socket.timeout:
+            return None, None
 
 
 def traceroute(host, max_hops, timeout):
@@ -107,7 +110,7 @@ def traceroute(host, max_hops, timeout):
     print(f"Routing to {host} [{destinationAddress}]:")
 
     for ttl in range(1, max_hops + 1):
-        traceRoute = TraceRoute4(destinationAddress, timeout, ttl)
+        traceRoute = ICMPTraceRoute4(destinationAddress, timeout, ttl)
         # Send ICMP request
         traceRoute.sendICMPRequest()
 
