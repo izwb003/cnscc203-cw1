@@ -23,6 +23,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
+"""
+A NOTE TO USERS WHO ARE USING WINDOWS:
+TURN OFF WINDOWS DEFENDER FIREWALL OR THIS PROGRAM WILL NOT WORK!
+"""
+
 import argparse
 import secrets
 import socket
@@ -130,24 +135,27 @@ def traceroute(host, max_hops, timeout):
 
         if address:
             print(f"{ttl}\t{address}\t{elapsedTime}ms")
-            if icmpType == 0:   # ICMP Type 0 means the message reached the target host, so break.
+            if icmpType == 0:
+                print("Traceroute finished.")   # ICMP Type 0 means the message reached the target host, so break.
                 break
         else:
-            print(f"{ttl}\t*\t{elapsedTime}ms")
+            print(f"{ttl}\t*\ttimeout")
 
 
 if __name__ == '__main__':
     # Build command line process
     commandParser = argparse.ArgumentParser(
         description=f"Traceroute.py {version} Copyright (c) 2023 Steven Song. Coursework for CNSCC203 Computer Networks "
-                    f"2023.")
+                    f"2023.",
+        epilog=f"Windows users shall make sure that you've turned off Windows Defender firewall.\n"
+               f"Default firewall settings may block traceroute.")
     commandParser.add_argument('-j', metavar='maximum_hops', default=30, type=int,
                                help="The maximum number of hops for the search target.")
-    commandParser.add_argument('-w', metavar='timeout', default=3, type=int,
+    commandParser.add_argument('-w', metavar='timeout', default=3000, type=int,
                                help="Time out waiting for each reply (in milliseconds).")
     commandParser.add_argument('target_host', type=str,
                                help="target host to traceroute. (DNS name or IP address)")
     commandOptions = commandParser.parse_args()
 
     # Do traceroute
-    traceroute(commandOptions.target_host, commandOptions.j, commandOptions.w)
+    traceroute(commandOptions.target_host, commandOptions.j, commandOptions.w/1000)
