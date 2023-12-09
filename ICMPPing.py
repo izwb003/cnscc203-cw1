@@ -30,6 +30,7 @@ import select
 import socket
 import struct
 import time
+from ICMPChecksum import calculateChecksum
 
 version = '0.1.0'
 
@@ -128,21 +129,6 @@ class ICMPPing4:
                                   icmp_sequence)
 
         return icmp_header + payload
-
-
-def calculateChecksum(data):
-    checksum = 0
-
-    # Separate data into 16bit sub block and add them as sum
-    for checkSumTime in range(0, len(data), 2):
-        checksum += (data[checkSumTime] << 8) + (data[checkSumTime + 1])
-
-    # Process with exceeded data
-    checksum = (checksum >> 16) + (checksum & 0xFFFF)
-    checksum += (checksum >> 16)
-
-    # Get the checksum result by negation.
-    return ~checksum & 0xFFFF
 
 
 def pingv4(destinationAddress, dataSize, timeout):
