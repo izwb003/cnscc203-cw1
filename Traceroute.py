@@ -23,11 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-"""
-A NOTE TO USERS WHO ARE USING WINDOWS:
-TURN OFF WINDOWS DEFENDER FIREWALL OR THIS PROGRAM WILL NOT WORK!
-"""
-
 import argparse
 import secrets
 import socket
@@ -56,7 +51,10 @@ class ICMPTraceRoute4:
         self.icmpPacket = self.createICMPPacket()
 
     def createICMPSocket(self):
-        # Create ICMP socket
+        """
+        Create the ICMP socket.
+        :return: The created ICMP socket.
+        """
         icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
         # Set TTL in IP header
         icmpSocket.setsockopt(socket.getprotobyname("ip"), socket.IP_TTL, self.ttl)
@@ -87,10 +85,17 @@ class ICMPTraceRoute4:
         return icmp_header + payload
 
     def sendICMPRequest(self):
-        # Send ICMP request
+        """
+        Send ICMP request message.
+        :return:
+        """
         self.icmpSocket.sendto(self.icmpPacket, (self.destinationAddress, 0))
 
     def receiveICMPReply(self):
+        """
+        Receive ICMP request message.
+        :return: The received ICMP reply.
+        """
         self.icmpSocket.settimeout(self.timeout)
 
         try:
@@ -101,12 +106,13 @@ class ICMPTraceRoute4:
             return None, None
 
 
-def traceroute(host, max_hops, timeout):
+def traceroute(host, max_hops, timeout, repeat_time):
     """
     Full logic of traceroute a target host.
     :param host: Target host. IP or hostname accepted.
     :param max_hops: The maximum number of hops for the search target.
     :param timeout: Timeout waiting for response for each reply (in ms).
+    :param repeat_time: Repeat time of calculating response time.
     :return:
     """
     destinationAddress = socket.gethostbyname(host)
@@ -115,31 +121,43 @@ def traceroute(host, max_hops, timeout):
     print(f"Routing to {host} [{destinationAddress}]:")
 
     for ttl in range(1, max_hops + 1):
-        traceRoute = ICMPTraceRoute4(destinationAddress, timeout, ttl)
-        # Send ICMP request
-        traceRoute.sendICMPRequest()
+        print(f"{ttl}\t", end="")
+        address = ''
+        icmpType = 1
+        flagUnreachable = True
+        for i in range(1, repeat_time + 1):
+            # Build traceroute message
+            traceRoute = ICMPTraceRoute4(destinationAddress, timeout, ttl)
 
-        # Record start time
-        startTime = time.time()
+            # Send ICMP request
+            traceRoute.sendICMPRequest()
 
-        # Receive ICMP reply
-        address, icmpType = traceRoute.receiveICMPReply()
+            # Record time and receive ICMP reply
+            startTime = time.time()
+            addressReceived, icmpType = traceRoute.receiveICMPReply()
+            if addressReceived is not None:
+                address = addressReceived
+            endTime = time.time()
+            elapsedTime = int((endTime - startTime) * 1000)
 
-        # Record end time and calculate time
-        endTime = time.time()
-        elapsedTime = int((endTime - startTime) * 1000)
+            # Close the socket and delete the message
+            traceRoute.icmpSocket.close()
+            del traceRoute
 
-        # Close the socket
-        traceRoute.icmpSocket.close()
-        del traceRoute
-
-        if address:
-            print(f"{ttl}\t{address}\t{elapsedTime}ms")
-            if icmpType == 0:
-                print("Traceroute finished.")   # ICMP Type 0 means the message reached the target host, so break.
-                break
+            # Give output
+            if addressReceived:
+                flagUnreachable = False
+                print(f"{elapsedTime}ms\t", end="")
+            else:
+                print("*\t",end="")
+        if flagUnreachable:
+            print("timeout")
         else:
-            print(f"{ttl}\t*\ttimeout")
+            print(f"{address}")
+        if icmpType == 0:
+            # ICMP Type 0 means the message reached the target host, so break.
+            print("Traceroute finished.")
+            break
 
 
 if __name__ == '__main__':
@@ -153,9 +171,11 @@ if __name__ == '__main__':
                                help="The maximum number of hops for the search target.")
     commandParser.add_argument('-w', metavar='timeout', default=3000, type=int,
                                help="Time out waiting for each reply (in milliseconds).")
+    commandParser.add_argument('-t', metavar='repeat_time', default=3, type=int,
+                               help="Repeat time of calculating response time.")
     commandParser.add_argument('target_host', type=str,
                                help="target host to traceroute. (DNS name or IP address)")
     commandOptions = commandParser.parse_args()
 
     # Do traceroute
-    traceroute(commandOptions.target_host, commandOptions.j, commandOptions.w/1000)
+    traceroute(commandOptions.target_host, commandOptions.j, commandOptions.w/1000, commandOptions.t)
